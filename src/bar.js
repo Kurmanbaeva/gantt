@@ -82,6 +82,7 @@ export default class Bar {
             rx: this.corner_radius,
             ry: this.corner_radius,
             class: 'bar',
+            style: 'fill: ' + this.task.color,
             append_to: this.bar_group
         });
 
@@ -109,10 +110,27 @@ export default class Bar {
     }
 
     draw_label() {
+         const bar = this.$bar;
+
+        let task_id = '<tspan class="task-id-label">[' + this.task.id + ']</tspan>'
+        let task_name = '<tspan class="task-name-label">' + this.task.name + '</tspan>';
+        let task_brigade = '<tspan class="task-brigade-label">' + this.task.brigade + '</tspan>';
+
+        let delta = this.task.delta || '0';
+        if(delta !== ''){
+            delta = '&#916 ' + delta
+        }
+
+        let task_delta;
+        if(this.task.delta < 0){
+            task_delta = '<tspan class="task-delta-label" style="fill: red">' + delta + '</tspan>';
+        }else{
+            task_delta = '<tspan class="task-delta-label" style="fill: green">' + delta + '</tspan>';
+        }
         createSVG('text', {
             x: this.x + this.width / 2,
             y: this.y + this.height / 2,
-            innerHTML: this.task.name,
+            innerHTML: task_id + ' ' + task_name + ' ' + task_delta + ' ' + task_brigade,
             class: 'bar-label',
             append_to: this.bar_group
         });
@@ -172,6 +190,21 @@ export default class Bar {
     bind() {
         if (this.invalid) return;
         this.setup_click_event();
+        this.setup_props_event();
+        this.setup_right_click_event();
+    }
+setup_right_click_event(){
+        let that = this;
+        this.group.addEventListener( "contextmenu", function(e) {
+            e.preventDefault();
+
+            let data = {
+                event: e,
+                bar: that
+            };
+
+            that.gantt.trigger_event("task_right_click", [data]);
+        });
     }
 
     setup_click_event() {
@@ -181,25 +214,51 @@ export default class Bar {
                 return;
             }
 
-            if (e.type === 'click') {
-                this.task.event = e;
-                this.gantt.trigger_event('click', [this.task]);
+            this.show_popup();
+            this.gantt.unselect_all();
+            this.group.classList.add('active');
+        });
+
+        $.on(this.group, 'dblclick', e => {
+            if (this.action_completed) {
+                // just finished a move action, wait for a few seconds
+                return;
             }
 
-            this.gantt.unselect_all();
-            this.group.classList.toggle('active');
+            this.gantt.trigger_event('click', [this.task]);
+        });
+    }
+        setup_props_event() {
+        $.on(this.group, 'focus ' + this.gantt.options.props_trigger, e => {
+            if (this.action_completed) {
+                // just finished a move action, wait for a few seconds
+                return;
+            }
 
-            this.show_popup(e);
+            this.gantt.hide_popup();
+
+            if (e.type === 'click') {
+                if(e.ctrlKey || e.shiftKey){
+                    this.task.event = e;
+                    this.group.classList.add('selected');
+                    this.gantt.trigger_event('select_click', [this.task]);
+                }else{
+                    this.task.event = e;
+                    this.gantt.unselect_all();
+                    this.gantt.trigger_event('click', [this.task]);
+                }
+            }
         });
     }
 
-    show_popup(e) {
+    show_popup() {
         if (this.gantt.bar_being_dragged) return;
 
-        const start_date = date_utils.format(this.task._start, 'MMM D');
+        const start_date = date_utils.format(this.task._start, 'MMM D', this.gantt.options.language);
         const end_date = date_utils.format(
             date_utils.add(this.task._end, -1, 'second'),
-            'MMM D'
+            'MMM D',
+            this.gantt.options.language
         );
         const subtitle = start_date + ' - ' + end_date;
 
@@ -208,7 +267,6 @@ export default class Bar {
             title: this.task.name,
             subtitle: subtitle,
             task: this.task,
-            event: e
         });
     }
 
